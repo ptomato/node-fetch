@@ -16,8 +16,6 @@ import {getSearch} from './utils/get-search';
 
 const INTERNALS = Symbol('Request internals');
 
-const streamDestructionSupported = 'destroy' in Stream.Readable.prototype;
-
 /**
  * Check if `obj` is an instance of Request.
  *
@@ -212,14 +210,6 @@ export function getNodeRequestOptions(request) {
 		throw new TypeError('Only HTTP(S) protocols are supported');
 	}
 
-	if (
-		request.signal &&
-		request.body instanceof Stream.Readable &&
-		!streamDestructionSupported
-	) {
-		throw new Error('Cancellation of streamed requests with AbortSignal is not supported');
-	}
-
 	// HTTP-network-or-cache fetch steps 2.4-2.7
 	let contentLengthValue = null;
 	if (request.body === null && /^(post|put)$/i.test(request.method)) {
@@ -274,6 +264,7 @@ export function getNodeRequestOptions(request) {
 		href: parsedURL.href,
 		method: request.method,
 		headers: exportNodeCompatibleHeaders(headers),
+		signal: request.signal,
 		agent
 	};
 

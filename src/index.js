@@ -57,10 +57,10 @@ export default function fetch(url, options_) {
 		const options = getNodeRequestOptions(request);
 
 		const send = (options.protocol === 'https:' ? https : http).request;
-		const {signal} = request;
+		const {signal} = options;
 		let response = null;
 
-		const abort = () => {
+		if (signal && signal.aborted) {
 			const error = new AbortError('The operation was aborted.');
 			reject(error);
 			if (request.body && request.body instanceof Stream.Readable) {
@@ -72,30 +72,14 @@ export default function fetch(url, options_) {
 			}
 
 			response.body.emit('error', error);
-		};
-
-		if (signal && signal.aborted) {
-			abort();
 			return;
 		}
-
-		const abortAndFinalize = () => {
-			abort();
-			finalize();
-		};
 
 		// Send request
 		const request_ = send(options);
 
-		if (signal) {
-			signal.addEventListener('abort', abortAndFinalize);
-		}
-
 		function finalize() {
 			request_.abort();
-			if (signal) {
-				signal.removeEventListener('abort', abortAndFinalize);
-			}
 		}
 
 		if (request.timeout) {
@@ -106,7 +90,10 @@ export default function fetch(url, options_) {
 		}
 
 		request_.on('error', err => {
-			reject(new FetchError(`request to ${request.url} failed, reason: ${err.message}`, 'system', err));
+			if (err.code === 'ERR_CANCELLED')
+				reject(new AbortError('The operation was aborted.'));
+			else
+				reject(new FetchError(`request to ${request.url} failed, reason: ${err.message}`, 'system', err));
 			finalize();
 		});
 
@@ -193,11 +180,6 @@ export default function fetch(url, options_) {
 			}
 
 			// Prepare response
-			res.once('end', () => {
-				if (signal) {
-					signal.removeEventListener('abort', abortAndFinalize);
-				}
-			});
 
 			let body = pump(res, new PassThrough(), error => {
 				reject(error);
